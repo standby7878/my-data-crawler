@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+crawler/.venv/
+
+# Java / Gradle
+*.class
+*.jar
+*.war
+*.ear
+orchestrator/.gradle/
+orchestrator/build/
+orchestrator/data/
+
+# IDEs / editors
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS / misc
+.DS_Store
+Thumbs.db
+*.log
+
+# Runtime outputs / local state
+data/
+jobs/
+runs/
+exports/
+
+# Local one-off files
+orchestrator/project_export.txt
+orchestrator/convert2txt.sh
