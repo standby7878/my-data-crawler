@@ -31,7 +31,7 @@ public class SearchController {
                     mediaType = "application/json",
                     examples = @io.swagger.v3.oas.annotations.media.ExampleObject(
                             name = "SearchRequest",
-                            value = "{\"query\":\"site:duunitori.fi kesatyo\",\"max_results\":10,\"categories\":[\"general\"],\"engines\":[\"google\",\"duckduckgo\"]}"
+                            value = "{\"query\":\"site duunitori.fi kesatyo Uusimaa\",\"max_results\":10,\"categories\":[\"general\"],\"engines\":[\"google\",\"duckduckgo\"]}"
                     )
             )
     )

@@ -103,14 +103,14 @@ public class SearxngService {
     }
 
     private JsonNode fetchPage(SearchRequest request, int page) {
+        String normalizedQuery = normalizeQuery(request.query());
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
                 .path("/search")
-                .queryParam("q", request.query())
+                .queryParam("q", normalizedQuery)
                 .queryParam("format", "json")
                 .queryParam("lang", "en")
                 .queryParam("pageno", page)
                 .queryParamIfPresent("categories", joinParam(request.categories()))
-                .queryParamIfPresent("engines", joinParam(request.engines()))
                 .toUriString();
         try {
             String body = restClient.get()
@@ -150,5 +150,22 @@ public class SearxngService {
             return Optional.empty();
         }
         return Optional.of(String.join(",", values));
+    }
+
+    private String normalizeQuery(String query) {
+        String raw = query == null ? "" : query.trim();
+        if (raw.isEmpty()) {
+            return "Uusimaa";
+        }
+
+        String withoutColons = raw.replace(':', ' ');
+        String collapsed = withoutColons.trim().replaceAll("\\s+", " ");
+        if (collapsed.isEmpty()) {
+            return "Uusimaa";
+        }
+        if (collapsed.matches("(?is).*\\buusimaa\\b.*")) {
+            return collapsed;
+        }
+        return collapsed + " Uusimaa";
     }
 }

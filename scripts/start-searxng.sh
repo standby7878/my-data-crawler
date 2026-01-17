@@ -26,8 +26,14 @@ SEARXNG_SECRET=$(cat "${SEARXNG_SECRET_FILE}")
 
 if docker ps -a --format '{{.Names}}' | grep -q "^${SEARXNG_CONTAINER_NAME}$"; then
   echo "Container ${SEARXNG_CONTAINER_NAME} already exists."
-  echo "Run: docker start ${SEARXNG_CONTAINER_NAME}"
-  exit 0
+  if [ "${SEARXNG_RECREATE:-0}" = "1" ]; then
+    echo "Recreating ${SEARXNG_CONTAINER_NAME} because SEARXNG_RECREATE=1..."
+    docker rm -f "${SEARXNG_CONTAINER_NAME}" >/dev/null
+  else
+    echo "Run: docker start ${SEARXNG_CONTAINER_NAME}"
+    echo "Or recreate to apply updated config: SEARXNG_RECREATE=1 $0"
+    exit 0
+  fi
 fi
 
 docker run -d \
