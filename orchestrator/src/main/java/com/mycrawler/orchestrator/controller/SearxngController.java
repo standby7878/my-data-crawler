@@ -4,6 +4,7 @@ import com.mycrawler.orchestrator.dto.SearxngHealthResponse;
 import com.mycrawler.orchestrator.service.SearxngService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,8 +35,8 @@ public class SearxngController {
             )
     )
     @GetMapping("/health")
-    public SearxngHealthResponse health() {
-        SearxngHealthResponse response = searxngService.checkHealth();
+    public SearxngHealthResponse health(HttpServletRequest httpRequest) {
+        SearxngHealthResponse response = searxngService.checkHealth(SearxngService.ForwardedHeaders.from(httpRequest));
         logger.info("SearXNG health: baseUrl={} ok={} statusCode={}",
                 response.baseUrl(), response.ok(), response.statusCode());
         return response;

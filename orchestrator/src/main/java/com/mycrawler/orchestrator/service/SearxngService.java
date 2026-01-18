@@ -14,23 +14,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
+import jakarta.servlet.http.HttpServletRequest;
 
 @Service
 public class SearxngService {
     private static final Logger logger = LoggerFactory.getLogger(SearxngService.class);
     private final RestClient restClient;
     private final String baseUrl;
+    private final String userAgent;
     private final ObjectMapper objectMapper;
+    private static final String DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.5";
+    private static final String DEFAULT_CLIENT_IP = "127.0.0.1";
 
     public SearxngService(
             RestClient.Builder restClientBuilder,
             @Value("${searxng.base-url}") String baseUrl,
+            @Value("${searxng.user-agent:Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0}") String userAgent,
             ObjectMapper objectMapper
     ) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -40,10 +46,15 @@ public class SearxngService {
                 .requestFactory(requestFactory)
                 .build();
         this.baseUrl = baseUrl;
+        this.userAgent = userAgent;
         this.objectMapper = objectMapper;
     }
 
     public SearxngHealthResponse checkHealth() {
+        return checkHealth(null);
+    }
+
+    public SearxngHealthResponse checkHealth(ForwardedHeaders forwardedHeaders) {
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
                 .path("/search")
                 .queryParam("q", "test")
@@ -52,6 +63,7 @@ public class SearxngService {
         try {
             ResponseEntity<String> response = restClient.get()
                     .uri(url)
+                    .headers(headers -> applyForwardedHeaders(headers, forwardedHeaders))
                     .retrieve()
                     .toEntity(String.class);
             logger.info("SearXNG health check response status={}", response.getStatusCode().value());
@@ -63,13 +75,17 @@ public class SearxngService {
     }
 
     public SearchResponse search(SearchRequest request) {
+        return search(request, null);
+    }
+
+    public SearchResponse search(SearchRequest request, ForwardedHeaders forwardedHeaders) {
         int maxResults = Optional.ofNullable(request.maxResults()).orElse(50);
         List<SearchResult> results = new ArrayList<>();
         int page = 1;
         int maxPages = 10;
         logger.info("SearXNG search start: query={} maxResults={}", request.query(), maxResults);
         while (results.size() < maxResults && page <= maxPages) {
-            JsonNode root = fetchPage(request, page);
+            JsonNode root = fetchPage(request, page, forwardedHeaders);
             JsonNode items = root.path("results");
             if (!items.isArray() || items.isEmpty()) {
                 break;
@@ -102,7 +118,7 @@ public class SearxngService {
         );
     }
 
-    private JsonNode fetchPage(SearchRequest request, int page) {
+    private JsonNode fetchPage(SearchRequest request, int page, ForwardedHeaders forwardedHeaders) {
         String normalizedQuery = normalizeQuery(request.query());
         String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
                 .path("/search")
@@ -116,14 +132,9 @@ public class SearxngService {
             String body = restClient.get()
                     .uri(url)
                     .headers(headers -> {
-                        headers.add("User-Agent", "JobOrchestrator/0.1 SearXNG-Client");
-                        headers.add("Accept", "application/json");
-                        headers.add("Accept-Language", "en-US,en;q=0.5");
-                        headers.add("Accept-Encoding", "gzip, deflate");
-                        headers.add("Connection", "keep-alive");
-                        headers.add("X-Forwarded-For", "127.0.0.1");
-                        headers.add("X-Real-IP", "127.0.0.1");
-                        headers.add("Referer", baseUrl);
+                        applyForwardedHeaders(headers, forwardedHeaders);
+                        headers.set(HttpHeaders.ACCEPT, "application/json");
+                        headers.set(HttpHeaders.REFERER, baseUrl);
                     })
                     .exchange((req, res) -> {
                         int status = res.getStatusCode().value();
@@ -152,6 +163,24 @@ public class SearxngService {
         return Optional.of(String.join(",", values));
     }
 
+    private void applyForwardedHeaders(HttpHeaders headers, ForwardedHeaders forwardedHeaders) {
+        String ua = (forwardedHeaders != null && forwardedHeaders.userAgent() != null && !forwardedHeaders.userAgent().isBlank())
+                ? forwardedHeaders.userAgent()
+                : userAgent;
+        headers.set(HttpHeaders.USER_AGENT, ua);
+
+        String acceptLanguage = (forwardedHeaders != null && forwardedHeaders.acceptLanguage() != null && !forwardedHeaders.acceptLanguage().isBlank())
+                ? forwardedHeaders.acceptLanguage()
+                : DEFAULT_ACCEPT_LANGUAGE;
+        headers.set(HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage);
+
+        String clientIp = (forwardedHeaders != null && forwardedHeaders.clientIp() != null && !forwardedHeaders.clientIp().isBlank())
+                ? forwardedHeaders.clientIp()
+                : DEFAULT_CLIENT_IP;
+        headers.set("X-Forwarded-For", clientIp);
+        headers.set("X-Real-IP", clientIp);
+    }
+
     private String normalizeQuery(String query) {
         String raw = query == null ? "" : query.trim();
         if (raw.isEmpty()) {
@@ -167,5 +196,32 @@ public class SearxngService {
             return collapsed;
         }
         return collapsed + " Uusimaa";
+    }
+
+    public record ForwardedHeaders(String userAgent, String acceptLanguage, String clientIp) {
+        public static ForwardedHeaders from(HttpServletRequest request) {
+            if (request == null) {
+                return null;
+            }
+            String userAgent = request.getHeader("User-Agent");
+            String acceptLanguage = request.getHeader("Accept-Language");
+            String clientIp = resolveClientIp(request);
+            return new ForwardedHeaders(userAgent, acceptLanguage, clientIp);
+        }
+
+        private static String resolveClientIp(HttpServletRequest request) {
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+                String first = xForwardedFor.split(",")[0].trim();
+                if (!first.isEmpty() && !"unknown".equalsIgnoreCase(first)) {
+                    return first;
+                }
+            }
+            String xRealIp = request.getHeader("X-Real-IP");
+            if (xRealIp != null && !xRealIp.isBlank() && !"unknown".equalsIgnoreCase(xRealIp.trim())) {
+                return xRealIp.trim();
+            }
+            return request.getRemoteAddr();
+        }
     }
 }

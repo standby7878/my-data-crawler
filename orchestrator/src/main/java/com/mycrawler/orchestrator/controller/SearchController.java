@@ -5,6 +5,7 @@ import com.mycrawler.orchestrator.dto.SearchResponse;
 import com.mycrawler.orchestrator.service.SearxngService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,10 +37,10 @@ public class SearchController {
             )
     )
     @PostMapping("/search")
-    public SearchResponse search(@Valid @RequestBody SearchRequest request) {
+    public SearchResponse search(@Valid @RequestBody SearchRequest request, HttpServletRequest httpRequest) {
         logger.info("Search request: query={} maxResults={} categories={} engines={}",
                 request.query(), request.maxResults(), request.categories(), request.engines());
-        SearchResponse response = searxngService.search(request);
+        SearchResponse response = searxngService.search(request, SearxngService.ForwardedHeaders.from(httpRequest));
         logger.info("Search response: query={} totalResults={}", response.query(), response.totalResults());
         return response;
     }
