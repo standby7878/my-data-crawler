@@ -120,14 +120,15 @@ public class SearxngService {
 
     private JsonNode fetchPage(SearchRequest request, int page, ForwardedHeaders forwardedHeaders) {
         String normalizedQuery = normalizeQuery(request.query());
-        String url = UriComponentsBuilder.fromHttpUrl(baseUrl)
-                .path("/search")
-                .queryParam("q", normalizedQuery)
-                .queryParam("format", "json")
-                .queryParam("lang", "en")
-                .queryParam("pageno", page)
-                .queryParamIfPresent("categories", joinParam(request.categories()))
-                .toUriString();
+        String lang = detectLang(request.query());
+        String url = buildSearchUrl(
+                baseUrl,
+                normalizedQuery,
+                lang,
+                page,
+                request.categories(),
+                request.engines()
+        );
         try {
             String body = restClient.get()
                     .uri(url)
@@ -181,21 +182,78 @@ public class SearxngService {
         headers.set("X-Real-IP", clientIp);
     }
 
-    private String normalizeQuery(String query) {
+    static String normalizeQuery(String query) {
         String raw = query == null ? "" : query.trim();
         if (raw.isEmpty()) {
             return "Uusimaa";
         }
 
-        String withoutColons = raw.replace(':', ' ');
-        String collapsed = withoutColons.trim().replaceAll("\\s+", " ");
+        String collapsed = raw.replaceAll("\\s+", " ").trim();
         if (collapsed.isEmpty()) {
             return "Uusimaa";
         }
-        if (collapsed.matches("(?is).*\\buusimaa\\b.*")) {
+        if (containsUusimaaLocation(collapsed)) {
             return collapsed;
         }
         return collapsed + " Uusimaa";
+    }
+
+    static String detectLang(String query) {
+        String raw = query == null ? "" : query.trim();
+        if (raw.isEmpty()) {
+            return "fi";
+        }
+        String lowered = raw.toLowerCase();
+        if (lowered.matches(".*[äöå].*")) {
+            return "fi";
+        }
+        if (lowered.matches("(?is).*\\b(kesätyö|kesäduuni|työ|harjoittelu|opiskelija|pääkaupunkiseutu|pk-seutu|uusimaa)\\b.*")) {
+            return "fi";
+        }
+        if (lowered.matches("(?is).*\\b(summer|internship|intern|trainee|student|job)\\b.*")) {
+            return "en";
+        }
+        return "fi";
+    }
+
+    static boolean containsUusimaaLocation(String query) {
+        if (query == null) {
+            return false;
+        }
+        return query.matches("(?is).*\\b(uusimaa|helsinki|espoo|vantaa|pääkaupunkiseutu|pk-seutu)\\b.*");
+    }
+
+    static String buildSearchUrl(
+            String baseUrl,
+            String query,
+            String lang,
+            int page,
+            List<String> categories,
+            List<String> engines
+    ) {
+        return UriComponentsBuilder.fromHttpUrl(baseUrl)
+                .path("/search")
+                .queryParam("q", query)
+                .queryParam("format", "json")
+                .queryParam("lang", lang == null || lang.isBlank() ? "fi" : lang)
+                .queryParam("pageno", page)
+                .queryParamIfPresent("categories", joinStatic(categories))
+                .queryParamIfPresent("engines", joinStatic(engines))
+                .toUriString();
+    }
+
+    private static Optional<String> joinStatic(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> filtered = values.stream()
+                .filter(v -> v != null && !v.isBlank())
+                .map(String::trim)
+                .toList();
+        if (filtered.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(String.join(",", filtered));
     }
 
     public record ForwardedHeaders(String userAgent, String acceptLanguage, String clientIp) {

@@ -16,7 +16,7 @@ public record SearchRequest(
         @Min(1) @Max(200) Integer maxResults,
     @Schema(description = "Search categories")
     List<String> categories,
-    @Schema(description = "Search engines to use (e.g., google, duckduckgo, bing)")
+    @Schema(description = "Search engines to use (e.g., google, bing, brave, qwant, mojeek)")
     List<String> engines
 ) {
 }
